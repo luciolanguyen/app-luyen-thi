@@ -251,5 +251,6 @@ trong `src/lib/exam-config.ts` khi có lịch chính thức.
 - Xuất báo cáo PDF
 - Tài khoản phụ huynh
 - Sinh đề tự động theo ma trận (bảng `exam_matrices` đã sẵn sàng cho việc này)
-- Thêm học sinh vào lớp bằng mã mời (cột `classes.join_code` đã có, chưa dùng)
+- Học sinh tự vào lớp bằng mã mời (cột `classes.join_code` đã có, chưa dùng —
+  hiện giáo viên gán thủ công ở trang Danh sách học sinh)
 - Theo dõi thư mục Drive để tự nhập (hiện phải chọn file thủ công)

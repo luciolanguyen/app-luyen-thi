@@ -159,3 +159,30 @@ export async function createClass(
   revalidatePath("/quan-tri/lich-thi");
   return { ok: `Đã tạo lớp ${parsed.data.name}.` };
 }
+
+/** Thêm hoặc bỏ học sinh khỏi lớp. */
+export async function setClassMembership(formData: FormData) {
+  const studentId = String(formData.get("studentId"));
+  const classId = String(formData.get("classId"));
+  const join = formData.get("join") === "1";
+
+  const supabase = await createClient();
+
+  if (join) {
+    await supabase
+      .from("class_members")
+      .upsert({ class_id: classId, student_id: studentId }, {
+        onConflict: "class_id,student_id",
+      });
+  } else {
+    await supabase
+      .from("class_members")
+      .delete()
+      .eq("class_id", classId)
+      .eq("student_id", studentId);
+  }
+
+  revalidatePath("/quan-tri/hoc-sinh");
+  revalidatePath("/quan-tri/lich-thi");
+  revalidatePath("/thi-thu");
+}

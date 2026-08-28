@@ -118,8 +118,8 @@ export default async function SchedulePage() {
             Lớp học
           </CardTitle>
           <CardDescription>
-            Cần có lớp trước khi giao đề. Học sinh được thêm vào lớp ở trang
-            Danh sách học sinh.
+            Cần có lớp trước khi giao đề. Sau khi tạo lớp, gán học sinh vào lớp
+            ở cột &quot;Lớp&quot; trong trang Danh sách học sinh.
           </CardDescription>
         </CardHeader>
         <CardContent>

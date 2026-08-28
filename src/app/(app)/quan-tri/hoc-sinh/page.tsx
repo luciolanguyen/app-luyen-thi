@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { ChevronLeft, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Badge, EmptyState } from "@/components/ui";
+import { ClassCell, type ClassOption } from "./class-cell";
 import { formatScore } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Danh sách học sinh" };
@@ -26,6 +27,23 @@ export default async function StudentsPage() {
     .order("xp", { ascending: false })
     .limit(200)
     .returns<StudentRow[]>();
+
+  const [{ data: classes }, { data: memberships }] = await Promise.all([
+    supabase
+      .from("classes")
+      .select("id, name")
+      .order("name")
+      .returns<ClassOption[]>(),
+    supabase
+      .from("class_members")
+      .select("class_id, student_id")
+      .returns<{ class_id: string; student_id: string }[]>(),
+  ]);
+
+  const classesOf = new Map<string, string[]>();
+  for (const m of memberships ?? []) {
+    classesOf.set(m.student_id, [...(classesOf.get(m.student_id) ?? []), m.class_id]);
+  }
 
   // Gom thống kê bài làm trong một truy vấn rồi tổng hợp phía ứng dụng —
   // rẻ hơn nhiều so với gọi class_report() cho từng học sinh.
@@ -79,7 +97,8 @@ export default async function StudentsPage() {
           Danh sách học sinh
         </h1>
         <p className="mt-1 text-muted-foreground">
-          {students?.length ?? 0} học sinh, sắp xếp theo XP.
+          {students?.length ?? 0} học sinh, sắp xếp theo XP. Gán lớp ở cột
+          &quot;Lớp&quot; để giao đề theo lớp ở trang Lịch thi.
         </p>
       </header>
 
@@ -95,7 +114,7 @@ export default async function StudentsPage() {
             <thead>
               <tr className="border-b border-border bg-muted text-left">
                 <th className="px-4 py-3 font-semibold">Học sinh</th>
-                <th className="px-4 py-3 font-semibold">Lớp / Trường</th>
+                <th className="px-4 py-3 font-semibold">Lớp</th>
                 <th className="px-4 py-3 text-right font-semibold">Thi thử</th>
                 <th className="px-4 py-3 text-right font-semibold">Điểm cao nhất</th>
                 <th className="px-4 py-3 text-right font-semibold">Tỉ lệ đúng</th>
@@ -126,8 +145,18 @@ export default async function StudentsPage() {
                         </Badge>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {[s.class_name, s.school].filter(Boolean).join(" · ") || "—"}
+                    <td className="px-4 py-3">
+                      <ClassCell
+                        studentId={s.id}
+                        studentName={s.full_name || "học sinh"}
+                        classes={classes ?? []}
+                        memberOf={classesOf.get(s.id) ?? []}
+                      />
+                      {(s.class_name || s.school) && (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Tự khai: {[s.class_name, s.school].filter(Boolean).join(" · ")}
+                        </p>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-right font-mono">
                       {st?.exams ?? 0}
