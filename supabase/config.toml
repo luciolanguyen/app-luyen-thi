@@ -1,0 +1,46 @@
+project_id = "luyen-thi-thpt-2026"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 17
+
+[db.seed]
+enabled = true
+# Nạp theo đúng thứ tự: phân loại -> câu hỏi -> đề thi.
+# Đổi thứ tự sẽ hỏng vì các file sau tham chiếu dữ liệu của file trước.
+sql_paths = [
+  "./seed/01_taxonomy_config.sql",
+  "./seed/02_questions_exam_types.sql",
+  "./seed/03_questions_cloze_reading.sql",
+  "./seed/04_questions_grammar_vocab.sql",
+  "./seed/05_sample_exam.sql",
+]
+
+[studio]
+enabled = true
+port = 54323
+
+[inbucket]
+enabled = true
+port = 54324
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000/auth/callback"]
+jwt_expiry = 3600
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+# Tắt xác nhận email khi chạy local để đăng ký xong dùng được ngay.
+# BẬT LẠI trên môi trường thật.
+enable_confirmations = false

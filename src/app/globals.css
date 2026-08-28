@@ -1,0 +1,190 @@
+@import "tailwindcss";
+
+/*
+  ============================================================================
+  LUYỆN THI THPT 2026 — DESIGN TOKENS
+  ----------------------------------------------------------------------------
+  Nguồn: ui-ux-pro-max --design-system ("Learning indigo + progress green"),
+  đã hiệu chỉnh thủ công 2 điểm để đạt WCAG AA:
+    1. accent #16A34A chỉ đạt 3.3:1 với chữ trắng  -> chữ/nút xanh dùng #15803D (5.02:1),
+       #16A34A chỉ dùng cho mảng đặc phi-văn-bản (progress bar, chấm trạng thái).
+    2. border gợi ý #C7D2FE chỉ đạt 1.33:1 -> viền của control tương tác dùng
+       #6B75A8 (3.97:1), #C7D2FE giữ lại làm hairline trang trí giữa các thẻ.
+  Typography: tool gợi ý Baloo 2 / Comic Neue (font ứng dụng trẻ em, và Comic Neue
+  KHÔNG có subset vietnamese) -> thay bằng Be Vietnam Pro + Source Serif 4,
+  cả hai đều có subset `vietnamese` (đã đối chiếu google-fonts.csv).
+  ============================================================================
+*/
+
+:root {
+  /* --- Nền & chữ --- */
+  --color-background: #eef2ff;
+  --color-foreground: #312e81;
+  --color-card: #ffffff;
+  --color-card-foreground: #312e81;
+  --color-muted: #ebeef8;
+  --color-muted-foreground: #475569;
+
+  /* --- Thương hiệu --- */
+  --color-primary: #4f46e5;
+  --color-primary-hover: #4338ca;
+  --color-primary-soft: #e0e7ff;
+  --color-on-primary: #ffffff;
+  --color-secondary: #818cf8;
+  --color-on-secondary: #0f172a;
+
+  /* --- Tiến bộ / đúng (xanh lá) --- */
+  --color-success: #15803d; /* chữ + nút: 5.02:1 trên trắng */
+  --color-success-fill: #16a34a; /* mảng đặc phi văn bản */
+  --color-success-strong: #166534; /* chữ trên nền success-soft */
+  --color-success-soft: #f0fdf4;
+  --color-on-success: #ffffff;
+
+  /* --- Sai / nguy hiểm --- */
+  --color-destructive: #dc2626;
+  --color-destructive-strong: #991b1b;
+  --color-destructive-soft: #fef2f2;
+  --color-on-destructive: #ffffff;
+
+  /* --- Cảnh báo (sắp hết giờ, sắp mất streak) --- */
+  --color-warning: #b45309;
+  --color-warning-fill: #f59e0b;
+  --color-warning-soft: #fffbeb;
+
+  /* --- Viền --- */
+  --color-border: #c7d2fe; /* hairline trang trí */
+  --color-border-strong: #6b75a8; /* viền control tương tác, 3:1+ */
+  --color-ring: #4f46e5;
+
+  /* --- Độ khó (4 mức của Bộ GD&ĐT) --- */
+  --color-level-1: #0e7490; /* Nhận biết */
+  --color-level-2: #15803d; /* Thông hiểu */
+  --color-level-3: #b45309; /* Vận dụng */
+  --color-level-4: #be123c; /* Vận dụng cao */
+
+  /* --- Bo góc --- */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.625rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
+
+  /* --- Đổ bóng: sắc nét, không mờ nhòe (Swiss/minimal) --- */
+  --shadow-xs: 0 1px 2px 0 rgb(49 46 129 / 0.06);
+  --shadow-sm: 0 1px 3px 0 rgb(49 46 129 / 0.08), 0 1px 2px -1px rgb(49 46 129 / 0.06);
+  --shadow-md: 0 4px 12px -2px rgb(49 46 129 / 0.10), 0 2px 4px -2px rgb(49 46 129 / 0.06);
+  --shadow-lg: 0 12px 28px -8px rgb(49 46 129 / 0.16);
+}
+
+@theme inline {
+  --color-background: var(--color-background);
+  --color-foreground: var(--color-foreground);
+  --color-card: var(--color-card);
+  --color-card-foreground: var(--color-card-foreground);
+  --color-muted: var(--color-muted);
+  --color-muted-foreground: var(--color-muted-foreground);
+
+  --color-primary: var(--color-primary);
+  --color-primary-hover: var(--color-primary-hover);
+  --color-primary-soft: var(--color-primary-soft);
+  --color-on-primary: var(--color-on-primary);
+  --color-secondary: var(--color-secondary);
+  --color-on-secondary: var(--color-on-secondary);
+
+  --color-success: var(--color-success);
+  --color-success-fill: var(--color-success-fill);
+  --color-success-strong: var(--color-success-strong);
+  --color-success-soft: var(--color-success-soft);
+  --color-on-success: var(--color-on-success);
+
+  --color-destructive: var(--color-destructive);
+  --color-destructive-strong: var(--color-destructive-strong);
+  --color-destructive-soft: var(--color-destructive-soft);
+  --color-on-destructive: var(--color-on-destructive);
+
+  --color-warning: var(--color-warning);
+  --color-warning-fill: var(--color-warning-fill);
+  --color-warning-soft: var(--color-warning-soft);
+
+  --color-border: var(--color-border);
+  --color-border-strong: var(--color-border-strong);
+  --color-ring: var(--color-ring);
+
+  --color-level-1: var(--color-level-1);
+  --color-level-2: var(--color-level-2);
+  --color-level-3: var(--color-level-3);
+  --color-level-4: var(--color-level-4);
+
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+
+  /* Be Vietnam Pro cho toàn bộ giao diện tiếng Việt.
+     Source Serif 4 dành riêng cho đoạn văn tiếng Anh trong bài đọc hiểu/cloze:
+     serif giúp đọc đoạn dài dễ hơn và tách bạch "nội dung đề thi" khỏi "vỏ ứng dụng". */
+  --font-sans: var(--font-be-vietnam), ui-sans-serif, system-ui, sans-serif;
+  --font-reading: var(--font-source-serif), Georgia, "Times New Roman", serif;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Focus ring nhìn thấy rõ trên MỌI control — WCAG 2.2, không bao giờ bỏ outline */
+  :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+
+  /* Vùng chạm tối thiểu 44x44 cho control trên mobile */
+  @media (pointer: coarse) {
+    :where(button, a[role="button"], input[type="radio"], input[type="checkbox"]) {
+      min-height: 44px;
+    }
+  }
+}
+
+@layer utilities {
+  .font-reading {
+    font-family: var(--font-reading);
+  }
+
+  /* Đoạn văn đề thi: dòng dài vừa phải, giãn dòng thoáng để đọc lâu không mỏi */
+  .prose-exam {
+    font-family: var(--font-reading);
+    font-size: 1.0625rem;
+    line-height: 1.75;
+    max-width: 68ch;
+  }
+
+  .prose-exam p + p {
+    margin-top: 1rem;
+  }
+}
+
+/* Tôn trọng prefers-reduced-motion trên toàn hệ thống */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
