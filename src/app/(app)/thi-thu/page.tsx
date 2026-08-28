@@ -1,8 +1,16 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { AlertTriangle, FileText, History, Timer } from "lucide-react";
+import {
+  AlertTriangle,
+  CalendarClock,
+  FileText,
+  History,
+  Lock,
+  Timer,
+  Users,
+} from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { startExam } from "@/lib/actions/attempt";
+import { rpcList } from "@/lib/supabase/rpc";
 import {
   Alert,
   Badge,
@@ -11,26 +19,32 @@ import {
   CardContent,
   EmptyState,
 } from "@/components/ui";
+import { startExam } from "@/lib/actions/attempt";
 import { formatDateTime, formatScore } from "@/lib/utils";
 import type { Attempt } from "@/lib/types";
 
 export const metadata: Metadata = { title: "Thi thử" };
 
-interface ExamRow {
+interface AvailableExam {
   id: string;
   title: string;
   kind: "official" | "province" | "teacher" | "generated";
   year: number | null;
   province: string | null;
   description: string | null;
-  exam_matrices: {
-    total_questions: number;
-    duration_seconds: number;
-    max_score: number;
-  } | null;
+  total_questions: number | null;
+  duration_seconds: number | null;
+  max_score: number | null;
+  open_at: string | null;
+  close_at: string | null;
+  window_status: "chua_mo" | "dang_mo" | "da_dong";
+  assigned_class: string | null;
+  max_attempts: number | null;
+  attempts_used: number;
+  in_progress_attempt: string | null;
 }
 
-const KIND_LABELS: Record<ExamRow["kind"], string> = {
+const KIND_LABELS: Record<AvailableExam["kind"], string> = {
   official: "Đề minh hoạ",
   province: "Đề Sở/Trường",
   teacher: "Giáo viên soạn",
@@ -45,15 +59,8 @@ export default async function ExamListPage({
   const sp = await searchParams;
   const supabase = await createClient();
 
-  const [{ data: exams }, { data: history }] = await Promise.all([
-    supabase
-      .from("exams")
-      .select(
-        "id, title, kind, year, province, description, exam_matrices(total_questions, duration_seconds, max_score)"
-      )
-      .eq("is_published", true)
-      .order("year", { ascending: false })
-      .returns<ExamRow[]>(),
+  const [exams, { data: history }] = await Promise.all([
+    rpcList<AvailableExam>(supabase, "available_exams"),
     supabase
       .from("attempts")
       .select("*")
@@ -63,8 +70,8 @@ export default async function ExamListPage({
       .returns<Attempt[]>(),
   ]);
 
-  const inProgress = (history ?? []).find((a) => a.status === "in_progress");
   const finished = (history ?? []).filter((a) => a.status !== "in_progress");
+  const inProgress = exams.find((e) => e.in_progress_attempt);
 
   return (
     <div className="mx-auto max-w-4xl px-5 py-8">
@@ -79,12 +86,11 @@ export default async function ExamListPage({
       </header>
 
       {sp.loi && (
-        <Alert tone="destructive" title="Không bắt đầu được bài thi" className="mb-6">
-          Đề có thể chưa được gán câu hỏi. Bạn thử đề khác hoặc báo cho giáo viên.
+        <Alert tone="destructive" title="Không vào được phòng thi" className="mb-6">
+          {decodeURIComponent(sp.loi)}
         </Alert>
       )}
 
-      {/* Bài đang làm dở luôn hiện đầu tiên — đây là việc cần xử lý ngay */}
       {inProgress && (
         <Card className="mb-6 border-warning">
           <CardContent className="flex flex-wrap items-center justify-between gap-4 p-5">
@@ -96,13 +102,12 @@ export default async function ExamListPage({
               <div>
                 <p className="font-bold">Bạn có một bài thi đang làm dở</p>
                 <p className="mt-0.5 text-sm text-muted-foreground">
-                  Bắt đầu lúc {formatDateTime(inProgress.started_at)}. Đồng hồ
-                  vẫn chạy kể từ thời điểm đó.
+                  {inProgress.title} — đồng hồ vẫn đang chạy.
                 </p>
               </div>
             </div>
             <Link
-              href={`/phong-thi/${inProgress.id}`}
+              href={`/phong-thi/${inProgress.in_progress_attempt}`}
               className="shrink-0 rounded-md bg-warning px-4 py-2.5 font-semibold text-white transition-colors duration-200 hover:opacity-90"
             >
               Quay lại làm bài
@@ -111,74 +116,26 @@ export default async function ExamListPage({
         </Card>
       )}
 
-      {/* ------------------------------ Danh sách đề ----------------------- */}
       <section className="mb-10">
         <h2 className="mb-4 text-lg font-bold">Đề thi có sẵn</h2>
 
-        {!exams || exams.length === 0 ? (
+        {exams.length === 0 ? (
           <EmptyState
             icon={<FileText className="size-8" aria-hidden="true" />}
-            title="Chưa có đề thi nào được công bố"
-            description="Giáo viên hoặc quản trị viên cần tạo và công bố đề trong trang Quản trị."
+            title="Chưa có đề thi nào dành cho bạn"
+            description="Giáo viên chưa công bố đề, hoặc các đề hiện có chỉ giao cho lớp khác."
           />
         ) : (
           <ul className="space-y-4">
-            {exams.map((exam) => {
-              const m = exam.exam_matrices;
-              return (
-                <li key={exam.id}>
-                  <Card>
-                    <CardContent className="p-5">
-                      <div className="flex flex-wrap items-start justify-between gap-4">
-                        <div className="min-w-0 flex-1">
-                          <div className="mb-2 flex flex-wrap items-center gap-2">
-                            <Badge tone="primary">{KIND_LABELS[exam.kind]}</Badge>
-                            {exam.year && (
-                              <Badge>{exam.year}</Badge>
-                            )}
-                            {exam.province && <Badge>{exam.province}</Badge>}
-                          </div>
-
-                          <h3 className="font-bold text-balance">{exam.title}</h3>
-
-                          {exam.description && (
-                            <p className="mt-1.5 text-sm text-muted-foreground">
-                              {exam.description}
-                            </p>
-                          )}
-
-                          {m && (
-                            <p className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-                              <span className="flex items-center gap-1.5">
-                                <FileText className="size-4" aria-hidden="true" />
-                                {m.total_questions} câu
-                              </span>
-                              <span className="flex items-center gap-1.5">
-                                <Timer className="size-4" aria-hidden="true" />
-                                {Math.round(m.duration_seconds / 60)} phút
-                              </span>
-                              <span>Thang điểm {m.max_score}</span>
-                            </p>
-                          )}
-                        </div>
-
-                        <form action={startExam} className="shrink-0">
-                          <input type="hidden" name="examId" value={exam.id} />
-                          <Button type="submit" size="lg">
-                            Vào phòng thi
-                          </Button>
-                        </form>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </li>
-              );
-            })}
+            {exams.map((exam) => (
+              <li key={exam.id}>
+                <ExamCard exam={exam} />
+              </li>
+            ))}
           </ul>
         )}
       </section>
 
-      {/* ------------------------------ Lịch sử ---------------------------- */}
       <section>
         <h2 className="mb-4 flex items-center gap-2 text-lg font-bold">
           <History className="size-5" aria-hidden="true" />
@@ -199,9 +156,7 @@ export default async function ExamListPage({
                 >
                   <div className="min-w-0">
                     <p className="font-semibold">
-                      {a.submitted_at
-                        ? formatDateTime(a.submitted_at)
-                        : "Chưa nộp"}
+                      {a.submitted_at ? formatDateTime(a.submitted_at) : "Chưa nộp"}
                     </p>
                     <p className="text-sm text-muted-foreground">
                       {a.correct_count}/{a.total_questions} câu đúng
@@ -226,5 +181,110 @@ export default async function ExamListPage({
         )}
       </section>
     </div>
+  );
+}
+
+function ExamCard({ exam }: { exam: AvailableExam }) {
+  const open = exam.window_status === "dang_mo";
+  const notYet = exam.window_status === "chua_mo";
+  const closed = exam.window_status === "da_dong";
+
+  const outOfAttempts =
+    exam.max_attempts !== null && exam.attempts_used >= exam.max_attempts;
+
+  return (
+    <Card className={closed ? "opacity-70" : undefined}>
+      <CardContent className="p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <Badge tone="primary">{KIND_LABELS[exam.kind]}</Badge>
+              {exam.year && <Badge>{exam.year}</Badge>}
+              {exam.province && <Badge>{exam.province}</Badge>}
+              {exam.assigned_class && (
+                <Badge tone="primary">
+                  <Users className="size-3.5" aria-hidden="true" />
+                  Giao cho {exam.assigned_class}
+                </Badge>
+              )}
+              {notYet && <Badge tone="warning">Chưa mở</Badge>}
+              {closed && <Badge tone="destructive">Đã đóng</Badge>}
+            </div>
+
+            <h3 className="font-bold text-balance">{exam.title}</h3>
+
+            {exam.description && (
+              <p className="mt-1.5 text-sm text-muted-foreground">
+                {exam.description}
+              </p>
+            )}
+
+            <p className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+              {exam.total_questions && (
+                <span className="flex items-center gap-1.5">
+                  <FileText className="size-4" aria-hidden="true" />
+                  {exam.total_questions} câu
+                </span>
+              )}
+              {exam.duration_seconds && (
+                <span className="flex items-center gap-1.5">
+                  <Timer className="size-4" aria-hidden="true" />
+                  {Math.round(exam.duration_seconds / 60)} phút
+                </span>
+              )}
+              {exam.max_attempts !== null && (
+                <span>
+                  Đã dùng {exam.attempts_used}/{exam.max_attempts} lượt
+                </span>
+              )}
+            </p>
+
+            {/* Khung giờ nói rõ bằng chữ, không chỉ đổi màu nút */}
+            {(exam.open_at || exam.close_at) && (
+              <p
+                className={
+                  notYet
+                    ? "mt-2.5 flex items-start gap-1.5 text-sm font-semibold text-warning"
+                    : closed
+                      ? "mt-2.5 flex items-start gap-1.5 text-sm font-semibold text-destructive-strong"
+                      : "mt-2.5 flex items-start gap-1.5 text-sm text-muted-foreground"
+                }
+              >
+                <CalendarClock className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                <span>
+                  {notYet && exam.open_at && `Mở lúc ${formatDateTime(exam.open_at)}`}
+                  {open && exam.close_at && `Đóng lúc ${formatDateTime(exam.close_at)}`}
+                  {open && !exam.close_at && exam.open_at && `Đã mở từ ${formatDateTime(exam.open_at)}`}
+                  {closed && exam.close_at && `Đã đóng lúc ${formatDateTime(exam.close_at)}`}
+                </span>
+              </p>
+            )}
+          </div>
+
+          <div className="shrink-0">
+            {exam.in_progress_attempt ? (
+              <Link
+                href={`/phong-thi/${exam.in_progress_attempt}`}
+                className="inline-flex h-12 items-center rounded-md bg-warning px-6 font-semibold text-white"
+              >
+                Làm tiếp
+              </Link>
+            ) : open && !outOfAttempts ? (
+              <form action={startExam}>
+                <input type="hidden" name="examId" value={exam.id} />
+                <Button type="submit" size="lg">
+                  Vào phòng thi
+                </Button>
+              </form>
+            ) : (
+              <span className="inline-flex h-12 items-center gap-2 rounded-md border border-border-strong px-5 text-sm font-semibold text-muted-foreground">
+                <Lock className="size-4" aria-hidden="true" />
+                {outOfAttempts ? "Hết lượt" : notYet ? "Chưa mở" : "Đã đóng"}
+              </span>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

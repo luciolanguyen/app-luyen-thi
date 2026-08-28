@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { RegisterForm } from "./register-form";
+import { AuthDivider, GoogleButton } from "@/components/google-button";
 
 export const metadata: Metadata = { title: "Đăng ký" };
 
@@ -23,6 +24,11 @@ export default function RegisterPage() {
           <p className="mt-1.5 text-sm text-muted-foreground">
             Miễn phí. Bắt đầu phiên luyện đầu tiên ngay sau khi đăng ký.
           </p>
+
+          <div className="mt-6">
+            <GoogleButton label="Đăng ký bằng Google" />
+          </div>
+          <AuthDivider />
 
           <RegisterForm />
         </div>

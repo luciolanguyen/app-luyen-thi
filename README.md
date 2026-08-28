@@ -17,6 +17,8 @@ Dựng theo spec trong [`prompt-nen-tang-luyen-thi-tieng-anh-thpt-2026.md`](./pr
 | Backend | Next.js Server Actions + hàm Postgres |
 | Database | Supabase (PostgreSQL + Auth + RLS) |
 | Chữ | Be Vietnam Pro (giao diện) · Source Serif 4 (đoạn văn tiếng Anh) |
+| Đọc file | ExcelJS (.xlsx) · PapaParse (.csv) · Mammoth (.docx) |
+| Trích xuất AI | Claude (`claude-opus-5`) qua `@anthropic-ai/sdk` — tuỳ chọn |
 
 ---
 
@@ -77,18 +79,58 @@ update profiles set role = 'admin' where id = (
 );
 ```
 
+### 6. Bật đăng nhập Google (tuỳ chọn)
+
+Học sinh vẫn đăng nhập bằng email/mật khẩu nếu bỏ qua bước này.
+
+1. Vào [Google Cloud Console](https://console.cloud.google.com) → tạo project.
+2. **APIs & Services → OAuth consent screen**: chọn External, điền tên ứng dụng.
+3. **Credentials → Create credentials → OAuth client ID**, loại *Web application*:
+   - Authorized JavaScript origins: `http://localhost:3000`
+   - Authorized redirect URIs:
+     - local: `http://127.0.0.1:54321/auth/v1/callback`
+     - cloud: `https://<project-ref>.supabase.co/auth/v1/callback`
+4. Điền `SUPABASE_AUTH_GOOGLE_CLIENT_ID` và `SUPABASE_AUTH_GOOGLE_SECRET` vào
+   `.env.local`, rồi đổi `enabled = false` thành `true` ở mục
+   `[auth.external.google]` trong `supabase/config.toml`.
+5. `npx supabase stop && npx supabase start` để nạp lại cấu hình.
+
+Trên Supabase Cloud thì khai hai giá trị đó ở **Authentication → Providers →
+Google** thay vì sửa `config.toml`.
+
+### 7. Bật lấy đề từ Google Drive (tuỳ chọn)
+
+1. Cùng project ở bước 6, vào **Library** bật **Google Drive API** và
+   **Google Picker API**.
+2. **Credentials → Create credentials → API key**. Nên giới hạn key theo HTTP
+   referrer (`http://localhost:3000/*`).
+3. Điền vào `.env.local`:
+   - `NEXT_PUBLIC_GOOGLE_CLIENT_ID` — dùng lại OAuth client ID ở bước 6
+   - `NEXT_PUBLIC_GOOGLE_API_KEY` — API key vừa tạo
+
+Hệ thống chỉ xin scope `drive.file`, nghĩa là Google **chỉ cấp quyền đọc đúng
+file bạn chọn** trong hộp thoại, không phải toàn bộ Drive. Access token sống
+trong bộ nhớ trang, gửi kèm đúng một lần rồi bỏ — không lưu database, không lưu
+localStorage. Vì vậy không cần refresh token và không có gì để rò rỉ.
+
+### 8. Bật đọc file Word bằng AI (tuỳ chọn)
+
+Điền `ANTHROPIC_API_KEY` (lấy ở [console.anthropic.com](https://console.anthropic.com))
+vào `.env.local`. Không có khoá thì đường Excel/CSV vẫn chạy bình thường, giao
+diện nói rõ trạng thái này.
+
 ---
 
 ## Kiểm thử
 
 ```bash
-npm run db:verify   # 54 kiểm tra schema/seed/luồng thi/bảo mật, không cần Docker
+npm run db:verify   # 72 kiểm tra schema/seed/luồng thi/lịch/nhập liệu, không cần Docker
 npm run typecheck   # kiểm tra kiểu TypeScript
 npm run build       # build production
 ```
 
 `db:verify` chạy toàn bộ SQL trên [PGlite](https://pglite.dev) (Postgres biên
-dịch sang WebAssembly) nên **không cần Docker hay Supabase**. 54 kiểm tra, gồm:
+dịch sang WebAssembly) nên **không cần Docker hay Supabase**. 72 kiểm tra, gồm:
 
 - dựng schema và nạp dữ liệu mẫu
 - mô phỏng trọn một lượt thi 40 câu: điểm số, điểm thưởng, streak, huy hiệu
@@ -96,6 +138,9 @@ dịch sang WebAssembly) nên **không cần Docker hay Supabase**. 54 kiểm tr
 - thống kê chỉ tính bài đã nộp của chính mình
 - sửa ma trận đề là all-or-nothing
 - bảng xếp hạng, tuỳ chọn ẩn danh, và các ràng buộc bảo mật
+- khung giờ mở–đóng chặn ở máy chủ, hạn nộp cắt theo giờ đóng
+- giới hạn số lượt, đề riêng của lớp ẩn với học sinh ngoài lớp
+- nhập câu hỏi: bắt lỗi từng dòng, gộp ngữ liệu, chặn commit trùng
 
 Mọi thay đổi SQL nên chạy lệnh này trước khi commit.
 
@@ -117,12 +162,15 @@ src/
 │   │   ├── vinh-danh/          # Bảng xếp hạng
 │   │   ├── diem-thuong/        # Ví điểm
 │   │   ├── ho-so/              # Hồ sơ cá nhân
-│   │   └── quan-tri/           # Ngân hàng câu hỏi, học sinh, ma trận đề
+│   │   └── quan-tri/           # Ngân hàng câu hỏi, học sinh, ma trận đề,
+│   │                           #   nhập câu hỏi, lịch thi & giao bài
 │   ├── phong-thi/              # Phòng thi ảo (KHÔNG có thanh điều hướng)
 │   ├── dang-nhap/ dang-ky/     # Xác thực
 │   └── globals.css             # Design token
 ├── components/                 # UI dùng chung
-├── lib/                        # Kiểu dữ liệu, tiện ích, server action
+├── lib/
+│   ├── import/                 # Đọc Excel/CSV, trích xuất bằng AI, file mẫu
+│   └── actions/                # Server action
 └── middleware.ts               # Bảo vệ route + làm mới session
 
 supabase/
@@ -199,9 +247,9 @@ trong `src/lib/exam-config.ts` khi có lịch chính thức.
 ## Chưa làm (giai đoạn 2 theo spec)
 
 - Cửa hàng đổi thưởng (màn hình đã có, nêu rõ trạng thái chưa mở)
-- Quản lý lớp học chi tiết, giao bài tập theo lớp, deadline
-- Import câu hỏi hàng loạt từ Excel/CSV
+- Quản lý lớp học chi tiết (đã có: tạo lớp, giao đề, khung giờ, giới hạn lượt)
 - Xuất báo cáo PDF
 - Tài khoản phụ huynh
-- Đăng nhập Google (OAuth)
 - Sinh đề tự động theo ma trận (bảng `exam_matrices` đã sẵn sàng cho việc này)
+- Thêm học sinh vào lớp bằng mã mời (cột `classes.join_code` đã có, chưa dùng)
+- Theo dõi thư mục Drive để tự nhập (hiện phải chọn file thủ công)

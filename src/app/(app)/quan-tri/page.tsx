@@ -3,8 +3,10 @@ import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import {
   ArrowRight,
+  CalendarClock,
   FileText,
   Grid3x3,
+  Upload,
   Users,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
@@ -56,6 +58,22 @@ export default async function AdminHubPage() {
       title: "Danh sách học sinh",
       description: "Theo dõi tiến độ, điểm số và mức độ hoạt động của từng học sinh.",
       stat: `${studentCount ?? 0} học sinh`,
+    },
+    {
+      href: "/quan-tri/nhap-cau-hoi",
+      icon: Upload,
+      title: "Nhập câu hỏi từ file",
+      description:
+        "Đọc Excel/CSV theo mẫu, hoặc để AI tách câu hỏi từ file Word và Google Docs. Có bước rà soát trước khi lưu.",
+      stat: "Excel · CSV · Word · Drive",
+    },
+    {
+      href: "/quan-tri/lich-thi",
+      icon: CalendarClock,
+      title: "Lịch thi & giao bài",
+      description:
+        "Đặt khung giờ mở–đóng cho từng đề, giao đề cho lớp và giới hạn số lượt làm.",
+      stat: "Khung giờ do máy chủ chặn",
     },
     {
       href: "/quan-tri/ma-tran-de",

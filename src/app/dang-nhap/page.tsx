@@ -1,13 +1,20 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { LoginForm } from "./login-form";
+import { AuthDivider, GoogleButton } from "@/components/google-button";
+import { Alert } from "@/components/ui";
 
 export const metadata: Metadata = { title: "Đăng nhập" };
+
+const GOOGLE_ERRORS: Record<string, string> = {
+  google: "Không đăng nhập được bằng Google. Bạn thử lại hoặc dùng email/mật khẩu.",
+  "google-tu-choi": "Bạn đã huỷ ở màn hình Google.",
+};
 
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ "tiep-tuc"?: string }>;
+  searchParams: Promise<{ "tiep-tuc"?: string; loi?: string }>;
 }) {
   const params = await searchParams;
 
@@ -29,6 +36,19 @@ export default async function LoginPage({
           <p className="mt-1.5 text-sm text-muted-foreground">
             Tiếp tục luyện tập và giữ chuỗi ngày học của bạn.
           </p>
+
+          {params.loi && (
+            <Alert tone="destructive" className="mt-5">
+              {GOOGLE_ERRORS[params.loi] ?? "Có lỗi xảy ra. Bạn thử lại."}
+            </Alert>
+          )}
+
+          {/* Nút Google đặt TRƯỚC form: đây là cách nhanh nhất, đừng bắt
+              người dùng đọc hết form rồi mới thấy lối tắt. */}
+          <div className="mt-6">
+            <GoogleButton next={params["tiep-tuc"]} label="Đăng nhập bằng Google" />
+          </div>
+          <AuthDivider />
 
           <LoginForm next={params["tiep-tuc"]} />
         </div>

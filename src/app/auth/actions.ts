@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
@@ -112,4 +113,37 @@ export async function logout() {
   await supabase.auth.signOut();
   revalidatePath("/", "layout");
   redirect("/");
+}
+
+/**
+ * Đăng nhập bằng Google qua Supabase Auth.
+ *
+ * Chỉ xin thông tin hồ sơ cơ bản (email, tên, ảnh) — KHÔNG xin quyền Drive.
+ * Quyền Drive là một luồng riêng, chỉ dành cho quản trị viên, xin đúng lúc cần
+ * chọn file (xem DrivePicker). Gộp hai thứ vào một lần xin quyền sẽ khiến học
+ * sinh phải chấp nhận quyền truy cập Drive mà các em không hề dùng tới.
+ */
+export async function loginWithGoogle(formData: FormData) {
+  const supabase = await createClient();
+  const next = formData.get("tiep-tuc");
+  const origin = (await headers()).get("origin") ?? "http://localhost:3000";
+
+  const callback = new URL("/auth/callback", origin);
+  if (typeof next === "string" && next.startsWith("/")) {
+    callback.searchParams.set("tiep-tuc", next);
+  }
+
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: callback.toString(),
+      queryParams: { access_type: "offline", prompt: "consent" },
+    },
+  });
+
+  if (error || !data.url) {
+    redirect("/dang-nhap?loi=google");
+  }
+
+  redirect(data.url);
 }

@@ -23,6 +23,8 @@ const MIGRATIONS = [
   "supabase/migrations/20260827000006_save_answer_returns_explanation.sql",
   "supabase/migrations/20260827000007_fix_performance_by_type.sql",
   "supabase/migrations/20260827000008_update_exam_matrix.sql",
+  "supabase/migrations/20260828000001_scheduling_and_classes.sql",
+  "supabase/migrations/20260828000002_import_pipeline.sql",
 ];
 
 const SEEDS = [
@@ -586,6 +588,261 @@ try {
     : bad("không đánh dấu bài quá giờ");
 } catch (e) {
   bad("kiểm tra bảo mật", e);
+}
+
+console.log("\n=== 11. Lịch thi: khung giờ mở–đóng ===");
+const EXAM = "22222222-2222-4222-8222-222222222222";
+try {
+  const { rows: hs } = await db.query(
+    `insert into auth.users (email, raw_user_meta_data)
+     values ('lich@test.vn', '{"full_name":"Vũ Lan"}'::jsonb) returning id`
+  );
+  const uid = hs[0].id;
+
+  // --- Chưa tới giờ mở ---
+  await db.query(
+    `update exams set open_at = now() + interval '1 day', close_at = now() + interval '2 day'
+      where id = $1`,
+    [EXAM]
+  );
+  await actAs(db, uid);
+
+  let blocked = false;
+  try {
+    await db.query(`select start_exam_attempt($1)`, [EXAM]);
+  } catch (e) {
+    blocked = /chưa mở/.test(e.message);
+  }
+  blocked
+    ? ok("chưa tới giờ mở: server từ chối vào thi")
+    : bad("vào thi được trước giờ mở");
+
+  const { rows: s1 } = await db.query(
+    `select window_status from available_exams() where id = $1`,
+    [EXAM]
+  );
+  s1[0]?.window_status === "chua_mo"
+    ? ok("danh sách đề báo trạng thái 'chưa mở'")
+    : bad(`trạng thái = ${s1[0]?.window_status}, cần 'chua_mo'`);
+
+  // --- Đã quá giờ đóng ---
+  await db.query(
+    `update exams set open_at = now() - interval '2 day', close_at = now() - interval '1 day'
+      where id = $1`,
+    [EXAM]
+  );
+  let closed = false;
+  try {
+    await db.query(`select start_exam_attempt($1)`, [EXAM]);
+  } catch (e) {
+    closed = /đã đóng/.test(e.message);
+  }
+  closed
+    ? ok("quá giờ đóng: server từ chối vào thi")
+    : bad("vẫn vào thi được sau giờ đóng");
+
+  // --- Trong khung giờ, nhưng giờ đóng tới sớm hơn thời lượng làm bài ---
+  await db.query(
+    `update exams set open_at = now() - interval '1 hour',
+                      close_at = now() + interval '10 minutes'
+      where id = $1`,
+    [EXAM]
+  );
+  const { rows: att } = await db.query(`select start_exam_attempt($1) as id`, [EXAM]);
+  ok("trong khung giờ: vào thi được");
+
+  const { rows: dl } = await db.query(
+    `select extract(epoch from (deadline_at - now()))::int as secs from attempts where id = $1`,
+    [att[0].id]
+  );
+  // 50 phút > 10 phút còn lại -> hạn nộp phải bị cắt về mốc đóng
+  dl[0].secs <= 620
+    ? ok(`hạn nộp cắt theo giờ đóng (${dl[0].secs}s, không phải 3000s)`)
+    : bad(`hạn nộp = ${dl[0].secs}s — cho làm vượt quá giờ đóng kỳ thi`);
+
+  // --- Giới hạn số lượt qua bài giao cho lớp ---
+  await db.query(`update attempts set status = 'submitted' where id = $1`, [att[0].id]);
+  const { rows: cls } = await db.query(
+    `insert into classes (name, school) values ('12A1', 'THPT Test') returning id`
+  );
+  await db.query(`insert into class_members (class_id, student_id) values ($1, $2)`, [
+    cls[0].id,
+    uid,
+  ]);
+  await db.query(
+    `insert into exam_assignments (exam_id, class_id, max_attempts, open_at, close_at)
+     values ($1, $2, 1, now() - interval '1 hour', now() + interval '1 hour')`,
+    [EXAM, cls[0].id]
+  );
+
+  let capped = false;
+  try {
+    await db.query(`select start_exam_attempt($1)`, [EXAM]);
+  } catch (e) {
+    capped = /hết .* lượt/.test(e.message);
+  }
+  capped
+    ? ok("hết số lượt cho phép: server từ chối làm lại")
+    : bad("làm lại được dù lớp giới hạn 1 lượt");
+
+  // Khung của lớp phải ghi đè khung của đề
+  const { rows: w } = await db.query(
+    `select assigned_class, window_status from available_exams() where id = $1`,
+    [EXAM]
+  );
+  w[0]?.assigned_class === "12A1" && w[0]?.window_status === "dang_mo"
+    ? ok("khung giờ của lớp ghi đè khung của đề")
+    : bad(`lớp/khung sai: ${JSON.stringify(w[0])}`);
+
+  // --- Đề giới hạn theo lớp: học sinh ngoài lớp không thấy ---
+  await db.query(`update exams set restricted_to_classes = true where id = $1`, [EXAM]);
+  const { rows: out } = await db.query(
+    `insert into auth.users (email, raw_user_meta_data)
+     values ('ngoai@test.vn', '{"full_name":"Ngoài Lớp"}'::jsonb) returning id`
+  );
+  await actAs(db, out[0].id);
+  const { rows: hidden } = await db.query(
+    `select count(*)::int as n from available_exams() where id = $1`,
+    [EXAM]
+  );
+  hidden[0].n === 0
+    ? ok("đề giới hạn theo lớp bị ẩn với học sinh ngoài lớp")
+    : bad("học sinh ngoài lớp vẫn thấy đề giới hạn");
+
+  let denied = false;
+  try {
+    await db.query(`select start_exam_attempt($1)`, [EXAM]);
+  } catch (e) {
+    denied = /chỉ dành cho lớp/.test(e.message);
+  }
+  denied
+    ? ok("học sinh ngoài lớp không vào thi được")
+    : bad("học sinh ngoài lớp vẫn vào thi được");
+
+  // Trả đề về trạng thái mở tự do cho các phần sau
+  await db.query(
+    `update exams set open_at = null, close_at = null, restricted_to_classes = false
+      where id = $1`,
+    [EXAM]
+  );
+} catch (e) {
+  bad("lịch thi", e);
+}
+
+console.log("\n=== 12. Nhập câu hỏi từ file ===");
+try {
+  const { rows: adm2 } = await db.query(
+    `insert into auth.users (email, raw_user_meta_data)
+     values ('admin2@test.vn', '{"full_name":"Quản Trị Hai"}'::jsonb) returning id`
+  );
+  await db.query(`update profiles set role = 'admin' where id = $1`, [adm2[0].id]);
+  await actAs(db, adm2[0].id);
+
+  const { rows: job } = await db.query(
+    `insert into import_jobs (created_by, source, format, file_name)
+     values ($1, 'upload', 'excel', 'de-mau.xlsx') returning id`,
+    [adm2[0].id]
+  );
+  const jid = job[0].id;
+
+  const good = JSON.stringify([
+    { key: "A", text: "apologise" },
+    { key: "B", text: "apologising" },
+    { key: "C", text: "apologised" },
+    { key: "D", text: "to apologise" },
+  ]);
+
+  await db.query(
+    `insert into import_items
+       (job_id, row_no, type_code, difficulty, stem, options, correct_key, explanation,
+        passage_ref, passage_kind, passage_title, passage_content, position_in_passage)
+     values
+       -- hợp lệ, có ngữ liệu dùng chung
+       ($1, 1, 'reading', 'thong_hieu', 'What is the main idea?', $2::jsonb, 'A',
+        'Giải thích đầy đủ.', 'p1', 'reading', 'Bài đọc 1', 'Nội dung bài đọc...', 1),
+       ($1, 2, 'reading', 'van_dung', 'The word X means?', $2::jsonb, 'B',
+        'Giải thích đầy đủ.', 'p1', 'reading', 'Bài đọc 1', 'Nội dung bài đọc...', 2),
+       -- thiếu giải thích
+       ($1, 3, 'grammar', 'thong_hieu', 'Câu hỏi không có giải thích', $2::jsonb, 'A',
+        '', null, null, null, null, null),
+       -- đáp án đúng không nằm trong 4 phương án
+       ($1, 4, 'grammar', 'thong_hieu', 'Đáp án lệch', $2::jsonb, 'D',
+        'Có giải thích.', null, null, null, null, null),
+       -- mã dạng bài sai
+       ($1, 5, 'khong_ton_tai', 'thong_hieu', 'Dạng bài sai', $2::jsonb, 'A',
+        'Có giải thích.', null, null, null, null, null)`,
+    [jid, good]
+  );
+
+  // Dòng 4 có correct_key='D' và phương án D tồn tại -> hợp lệ.
+  // Đổi thành phương án D rỗng để đúng ý "đáp án không khớp".
+  await db.query(
+    `update import_items
+        set options = '[{"key":"A","text":"a"},{"key":"B","text":"b"},
+                        {"key":"C","text":"c"},{"key":"D","text":""}]'::jsonb
+      where job_id = $1 and row_no = 4`,
+    [jid]
+  );
+
+  const { rows: val } = await db.query(`select validate_import_job($1) as r`, [jid]);
+  const v = val[0].r;
+  v.valid === 2 && v.errors === 3
+    ? ok(`kiểm tra bắt đúng: ${v.valid} dòng hợp lệ, ${v.errors} dòng lỗi`)
+    : bad(`kiểm tra sai: ${JSON.stringify(v)}`);
+
+  const { rows: errs } = await db.query(
+    `select row_no, errors from import_items where job_id = $1 and not is_valid order by row_no`,
+    [jid]
+  );
+  const hasExplain = errs.find((r) => r.row_no === 3)?.errors?.some((e) => /giải thích/.test(e));
+  const hasKey = errs.find((r) => r.row_no === 4)?.errors?.some((e) => /không khớp/.test(e));
+  const hasType = errs.find((r) => r.row_no === 5)?.errors?.some((e) => /dạng bài/.test(e));
+  hasExplain && hasKey && hasType
+    ? ok("mỗi dòng lỗi được ghi rõ lý do bằng tiếng Việt")
+    : bad(`lý do lỗi thiếu: ${JSON.stringify(errs)}`);
+
+  const beforeQ = (await db.query(`select count(*)::int as n from questions`)).rows[0].n;
+  const { rows: com } = await db.query(`select commit_import_job($1) as r`, [jid]);
+  com[0].r.questions === 2 && com[0].r.passages === 1
+    ? ok("chỉ lưu dòng hợp lệ, gộp 2 câu vào cùng 1 đoạn ngữ liệu")
+    : bad(`commit sai: ${JSON.stringify(com[0].r)}`);
+
+  const afterQ = (await db.query(`select count(*)::int as n from questions`)).rows[0].n;
+  afterQ - beforeQ === 2
+    ? ok("ngân hàng tăng đúng 2 câu")
+    : bad(`ngân hàng tăng ${afterQ - beforeQ} câu, cần 2`);
+
+  const { rows: linked } = await db.query(
+    `select count(distinct passage_id)::int as n from questions
+      where source = 'Nhập từ de-mau.xlsx' and passage_id is not null`
+  );
+  linked[0].n === 1
+    ? ok("hai câu cùng trỏ về một passage duy nhất")
+    : bad(`có ${linked[0].n} passage, cần 1`);
+
+  let twice = false;
+  try {
+    await db.query(`select commit_import_job($1)`, [jid]);
+  } catch (e) {
+    twice = /đã được lưu/.test(e.message);
+  }
+  twice
+    ? ok("commit lần hai bị chặn — không nhập trùng")
+    : bad("commit lần hai vẫn chạy, ngân hàng sẽ có câu trùng");
+
+  // Học sinh không được đụng vào đường ống nhập
+  await actAs(db, (await db.query(`select id from profiles where role = 'student' limit 1`)).rows[0].id);
+  let noPerm = false;
+  try {
+    await db.query(`select commit_import_job($1)`, [jid]);
+  } catch {
+    noPerm = true;
+  }
+  noPerm
+    ? ok("học sinh không gọi được hàm nhập câu hỏi")
+    : bad("học sinh gọi được hàm nhập câu hỏi");
+} catch (e) {
+  bad("nhập câu hỏi", e);
 }
 
 console.log(

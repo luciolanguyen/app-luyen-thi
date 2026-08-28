@@ -44,3 +44,13 @@ enable_signup = true
 # Tắt xác nhận email khi chạy local để đăng ký xong dùng được ngay.
 # BẬT LẠI trên môi trường thật.
 enable_confirmations = false
+
+# Đăng nhập bằng Google cho học sinh.
+# Bật lên sau khi điền SUPABASE_AUTH_GOOGLE_CLIENT_ID và SUPABASE_AUTH_GOOGLE_SECRET
+# vào .env.local — Supabase CLI tự đọc hai biến này theo cú pháp env().
+[auth.external.google]
+enabled = false
+client_id = "env(SUPABASE_AUTH_GOOGLE_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_GOOGLE_SECRET)"
+redirect_uri = ""
+skip_nonce_check = false
