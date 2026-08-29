@@ -25,6 +25,7 @@ const MIGRATIONS = [
   "supabase/migrations/20260827000008_update_exam_matrix.sql",
   "supabase/migrations/20260828000001_scheduling_and_classes.sql",
   "supabase/migrations/20260828000002_import_pipeline.sql",
+  "supabase/migrations/20260829000001_ai_providers.sql",
 ];
 
 const SEEDS = [
@@ -52,6 +53,8 @@ language sql stable as $$
   select nullif(current_setting('test.current_user_id', true), '')::uuid;
 $$;
 
+-- Supabase có sẵn cả hai vai trò này; migration có revoke/grant trên chúng
+create role anon;
 create role authenticated;
 `;
 
@@ -843,6 +846,101 @@ try {
     : bad("học sinh gọi được hàm nhập câu hỏi");
 } catch (e) {
   bad("nhập câu hỏi", e);
+}
+
+console.log("\n=== 13. Cấu hình nhà cung cấp AI ===");
+try {
+  const { rows: adm3 } = await db.query(
+    `insert into auth.users (email, raw_user_meta_data)
+     values ('admin3@test.vn', '{"full_name":"Quản Trị Ba"}'::jsonb) returning id`
+  );
+  await db.query(`update profiles set role = 'admin' where id = $1`, [adm3[0].id]);
+  await actAs(db, adm3[0].id);
+
+  const add = async (kind, model) =>
+    (
+      await db.query(
+        `insert into ai_providers (kind, label, base_url, api_key_cipher, api_key_hint, model, created_by)
+         values ($1::ai_provider_kind, $1::text, 'https://x/v1', 'ban-ma-gia', '1234', $2, $3)
+         returning id`,
+        [kind, model, adm3[0].id]
+      )
+    ).rows[0].id;
+
+  const p1 = await add("openai", "gpt-5");
+  const p2 = await add("deepseek", "deepseek-chat");
+  ok("lưu được nhiều nhà cung cấp");
+
+  await db.query(`select set_active_ai_provider($1)`, [p1]);
+  await db.query(`select set_active_ai_provider($1)`, [p2]);
+
+  const { rows: act } = await db.query(
+    `select count(*) filter (where is_active)::int as n,
+            (select kind::text from ai_providers where is_active) as dang_dung
+       from ai_providers`
+  );
+  act[0].n === 1 && act[0].dang_dung === "deepseek"
+    ? ok("đổi nhà cung cấp: chỉ đúng 1 cái được bật")
+    : bad(`có ${act[0].n} cái đang bật (${act[0].dang_dung}), cần đúng 1`);
+
+  const { rows: sec } = await db.query(`select * from get_ai_provider_secret(null)`);
+  sec[0]?.api_key_cipher === "ban-ma-gia" && sec[0]?.model === "deepseek-chat"
+    ? ok("hàm lấy bản mã trả về đúng nhà cung cấp đang bật")
+    : bad(`hàm trả về sai: ${JSON.stringify(sec[0])}`);
+
+  // Học sinh không được đụng vào cấu hình AI
+  const { rows: st } = await db.query(
+    `select id from profiles where role = 'student' limit 1`
+  );
+  await actAs(db, st[0].id);
+
+  let blocked = false;
+  try {
+    await db.query(`select set_active_ai_provider($1)`, [p1]);
+  } catch (e) {
+    blocked = /quản trị viên/.test(e.message);
+  }
+  blocked
+    ? ok("học sinh không đổi được nhà cung cấp AI")
+    : bad("học sinh đổi được nhà cung cấp AI");
+
+  // Phải ĐỔI VAI sang authenticated mới kiểm được RLS: mặc định script chạy
+  // dưới quyền superuser, mà superuser thì bỏ qua RLS.
+  await db.exec(`set role authenticated`);
+  const { rows: leak } = await db.query(
+    `select count(*)::int as n from ai_providers`
+  );
+  leak[0].n === 0
+    ? ok("RLS: học sinh không thấy dòng cấu hình nào")
+    : bad(`học sinh thấy ${leak[0].n} dòng cấu hình`);
+
+  // Và cột bản mã bị chặn ở tầng quyền, không chỉ nhờ RLS
+  let cipherBlocked = false;
+  try {
+    await db.query(`select api_key_cipher from ai_providers`);
+  } catch (e) {
+    cipherBlocked = /permission denied/i.test(e.message);
+  }
+  cipherBlocked
+    ? ok("select thẳng cột api_key_cipher bị Postgres từ chối")
+    : bad("select được cột api_key_cipher — bản mã API key bị lộ ra client");
+
+  await db.exec(`reset role`);
+
+  // Quyền SELECT trên cột bản mã phải bị thu hồi ở tầng Postgres
+  const { rows: priv } = await db.query(
+    `select count(*)::int as n
+       from information_schema.column_privileges
+      where table_name = 'ai_providers'
+        and column_name = 'api_key_cipher'
+        and grantee = 'authenticated'
+        and privilege_type = 'SELECT'`
+  );
+  priv[0].n === 0
+    ? ok("cột api_key_cipher không cấp quyền SELECT cho authenticated")
+    : bad("authenticated vẫn select được cột chứa bản mã API key");
+} catch (e) {
+  bad("cấu hình AI", e);
 }
 
 console.log(

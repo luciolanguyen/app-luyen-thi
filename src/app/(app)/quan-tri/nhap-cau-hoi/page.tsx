@@ -79,7 +79,21 @@ export default async function ImportHubPage({
 
   const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? "";
   const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY ?? "";
-  const aiReady = Boolean(process.env.ANTHROPIC_API_KEY);
+  // Trạng thái AI lấy từ cấu hình trong database, không đọc biến môi trường:
+  // admin đổi nhà cung cấp trong giao diện thì chỗ này phải phản ánh ngay.
+  const { data: activeProvider } = await supabase
+    .from("ai_providers")
+    .select("label, model")
+    .eq("is_active", true)
+    .maybeSingle<{ label: string; model: string | null }>();
+
+  const envFallback = Boolean(process.env.ANTHROPIC_API_KEY);
+  const aiReady = Boolean(activeProvider?.model) || envFallback;
+  const aiLabel = activeProvider?.model
+    ? `${activeProvider.label} · ${activeProvider.model}`
+    : envFallback
+      ? "Claude (từ biến môi trường)"
+      : null;
 
   return (
     <div className="mx-auto max-w-4xl px-5 py-8">
@@ -189,14 +203,19 @@ export default async function ImportHubPage({
             {aiReady ? (
               <>
                 File <strong>.docx</strong> và <strong>Google Docs</strong> được
-                đọc bằng AI để tách thành câu hỏi. Kết quả luôn cần bạn rà soát
-                — AI có thể đọc sai đáp án.
+                đọc bằng <strong>{aiLabel}</strong>. Kết quả luôn cần bạn rà
+                soát — AI có thể đọc sai đáp án.{" "}
+                <Link href="/quan-tri/cau-hinh-ai" className="font-semibold underline">
+                  Đổi nhà cung cấp
+                </Link>
               </>
             ) : (
               <>
-                Chưa cấu hình <code className="font-mono">ANTHROPIC_API_KEY</code>{" "}
-                nên tạm thời chưa đọc được file Word/Google Docs. Đường
-                Excel/CSV vẫn dùng bình thường.
+                Chưa cấu hình nhà cung cấp AI nên tạm thời chưa đọc được file
+                Word/Google Docs. Đường Excel/CSV vẫn dùng bình thường.{" "}
+                <Link href="/quan-tri/cau-hinh-ai" className="font-semibold underline">
+                  Cấu hình ngay
+                </Link>
               </>
             )}
           </span>

@@ -18,7 +18,7 @@ Dựng theo spec trong [`prompt-nen-tang-luyen-thi-tieng-anh-thpt-2026.md`](./pr
 | Database | Supabase (PostgreSQL + Auth + RLS) |
 | Chữ | Be Vietnam Pro (giao diện) · Source Serif 4 (đoạn văn tiếng Anh) |
 | Đọc file | ExcelJS (.xlsx) · PapaParse (.csv) · Mammoth (.docx) |
-| Trích xuất AI | Claude (`claude-opus-5`) qua `@anthropic-ai/sdk` — tuỳ chọn |
+| Trích xuất AI | ChatGPT · OpenRouter · DeepSeek · Claude · endpoint tuỳ chỉnh — chọn trong giao diện |
 
 ---
 
@@ -115,22 +115,48 @@ localStorage. Vì vậy không cần refresh token và không có gì để rò 
 
 ### 8. Bật đọc file Word bằng AI (tuỳ chọn)
 
-Điền `ANTHROPIC_API_KEY` (lấy ở [console.anthropic.com](https://console.anthropic.com))
-vào `.env.local`. Không có khoá thì đường Excel/CSV vẫn chạy bình thường, giao
-diện nói rõ trạng thái này.
+Khác với các bước trên, API key của nhà cung cấp AI được **nhập trong giao
+diện**, không khai trong `.env.local`. Nhưng để lưu được khoá đó thì cần một
+khoá mã hoá:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
+```
+
+Dán kết quả vào `AI_ENCRYPTION_KEY` trong `.env.local`, khởi động lại server,
+rồi vào **Quản trị → Cấu hình AI**:
+
+1. Chọn nhà cung cấp — ChatGPT (OpenAI), OpenRouter, DeepSeek, Claude, hoặc
+   *Tuỳ chỉnh* cho endpoint tương thích OpenAI (Ollama, vLLM, LM Studio…).
+2. Dán API key rồi bấm **Lấy model**. Bước này gọi thẳng nhà cung cấp nên vừa
+   liệt kê model vừa là phép thử khoá — sai khoá là báo lỗi ngay.
+3. Chọn model rồi lưu. Đổi model sau này không phải nhập lại khoá.
+
+**Cách khoá được bảo vệ.** Khoá mã hoá AES-256-GCM trước khi vào database;
+`AI_ENCRYPTION_KEY` chỉ nằm ở biến môi trường nên lộ bản sao database vẫn không
+đọc được khoá. Quyền `SELECT` trên riêng cột chứa bản mã bị thu hồi ở tầng
+Postgres, nên kể cả admin cũng không select được cột đó qua API — chỉ hàm
+`security definer` đọc được. Giao diện chỉ hiện 4 ký tự cuối.
+
+⚠️ **Đổi `AI_ENCRYPTION_KEY` sẽ làm mọi khoá đã lưu không giải mã được nữa**,
+phải xoá và nhập lại. Ứng dụng báo đúng lý do khi gặp tình huống này.
+
+Không cấu hình gì thì đường Excel/CSV vẫn chạy bình thường và giao diện nói rõ
+trạng thái. Nếu có sẵn `ANTHROPIC_API_KEY` trong `.env.local` thì hệ thống dùng
+tạm khoá đó khi chưa cấu hình nhà cung cấp nào.
 
 ---
 
 ## Kiểm thử
 
 ```bash
-npm run db:verify   # 72 kiểm tra schema/seed/luồng thi/lịch/nhập liệu, không cần Docker
+npm run db:verify   # 80 kiểm tra schema/seed/luồng thi/lịch/nhập liệu, không cần Docker
 npm run typecheck   # kiểm tra kiểu TypeScript
 npm run build       # build production
 ```
 
 `db:verify` chạy toàn bộ SQL trên [PGlite](https://pglite.dev) (Postgres biên
-dịch sang WebAssembly) nên **không cần Docker hay Supabase**. 72 kiểm tra, gồm:
+dịch sang WebAssembly) nên **không cần Docker hay Supabase**. 80 kiểm tra, gồm:
 
 - dựng schema và nạp dữ liệu mẫu
 - mô phỏng trọn một lượt thi 40 câu: điểm số, điểm thưởng, streak, huy hiệu
@@ -141,6 +167,7 @@ dịch sang WebAssembly) nên **không cần Docker hay Supabase**. 72 kiểm tr
 - khung giờ mở–đóng chặn ở máy chủ, hạn nộp cắt theo giờ đóng
 - giới hạn số lượt, đề riêng của lớp ẩn với học sinh ngoài lớp
 - nhập câu hỏi: bắt lỗi từng dòng, gộp ngữ liệu, chặn commit trùng
+- cấu hình AI: chỉ một nhà cung cấp được bật, học sinh không đọc được bản mã khoá
 
 Mọi thay đổi SQL nên chạy lệnh này trước khi commit.
 
@@ -163,12 +190,13 @@ src/
 │   │   ├── diem-thuong/        # Ví điểm
 │   │   ├── ho-so/              # Hồ sơ cá nhân
 │   │   └── quan-tri/           # Ngân hàng câu hỏi, học sinh, ma trận đề,
-│   │                           #   nhập câu hỏi, lịch thi & giao bài
+│   │                           #   nhập câu hỏi, lịch thi, cấu hình AI
 │   ├── phong-thi/              # Phòng thi ảo (KHÔNG có thanh điều hướng)
 │   ├── dang-nhap/ dang-ky/     # Xác thực
 │   └── globals.css             # Design token
 ├── components/                 # UI dùng chung
 ├── lib/
+│   ├── ai/                     # Nhà cung cấp AI, mã hoá API key
 │   ├── import/                 # Đọc Excel/CSV, trích xuất bằng AI, file mẫu
 │   └── actions/                # Server action
 └── middleware.ts               # Bảo vệ route + làm mới session
@@ -225,6 +253,10 @@ Ghi lại vì đây là những lỗi chỉ lộ ra khi chạy thật, không l�
   `update_exam_matrix()`.
 - **`z.string().uuid()` của Zod 4 kiểm tra cả bit version/variant RFC 4122**,
   loại oan những UUID mà Postgres chấp nhận. Dùng `z.guid()` cho id lấy từ DB.
+- **Bí mật lưu trong database phải chặn ở TẦNG QUYỀN, không chỉ RLS.** Cột
+  `ai_providers.api_key_cipher` bị `revoke select`, vì RLS chỉ lọc dòng chứ
+  không giấu được cột. Khi viết test cho RLS, nhớ `set role authenticated` —
+  chạy dưới superuser thì RLS bị bỏ qua và test sẽ báo sai.
 - **Đừng viết `where ... or true`** trong hàm thống kê: nó vô hiệu hoá bộ lọc và
   LEFT JOIN sẽ kéo theo cả dữ liệu lẽ ra bị loại.
 

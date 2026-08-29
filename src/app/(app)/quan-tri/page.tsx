@@ -6,6 +6,7 @@ import {
   CalendarClock,
   FileText,
   Grid3x3,
+  Sparkles,
   Upload,
   Users,
 } from "lucide-react";
@@ -66,6 +67,14 @@ export default async function AdminHubPage() {
       description:
         "Đọc Excel/CSV theo mẫu, hoặc để AI tách câu hỏi từ file Word và Google Docs. Có bước rà soát trước khi lưu.",
       stat: "Excel · CSV · Word · Drive",
+    },
+    {
+      href: "/quan-tri/cau-hinh-ai",
+      icon: Sparkles,
+      title: "Cấu hình AI",
+      description:
+        "Chọn ChatGPT, OpenRouter, DeepSeek, Claude hoặc endpoint tuỳ chỉnh để đọc file Word thành câu hỏi.",
+      stat: "Nhập khoá, lấy model, chọn model",
     },
     {
       href: "/quan-tri/lich-thi",
